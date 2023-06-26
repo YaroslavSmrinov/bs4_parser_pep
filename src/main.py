@@ -1,14 +1,17 @@
-import re
 import logging
-from prettytable import PrettyTable
+import re
+from collections import defaultdict
 from urllib.parse import urljoin
-from constants import BASE_DIR, MAIN_DOC_URL, PEP_DOC_URL, EXPECTED_STATUS
-from bs4 import BeautifulSoup, element
+
 import requests_cache
+from bs4 import BeautifulSoup
+from prettytable import PrettyTable
 from tqdm import tqdm
+
 from configs import configure_argument_parser, configure_logging
+from constants import BASE_DIR, EXPECTED_STATUS, MAIN_DOC_URL, PEP_DOC_URL
 from outputs import control_output
-from utils import get_response, find_tag
+from utils import find_tag, get_response, is_in_expected_statuses
 
 
 def whats_new(session):
@@ -99,52 +102,34 @@ def pep(session):
         soup,
         'section',
         attrs={'id': 'index-by-category'}
-    ).find_all('table')
+    ).find_all('tr')
+
     different_statuses = []
-    counters = {'Статус': 'Количество',
-                'A': 0,
-                'D': 0,
-                'F': 0,
-                'P': 0,
-                'R': 0,
-                'S': 0,
-                'W': 0,
-                '': 0
-                }
-    for table in tables:
-        raws = table.find('tbody')
-        for raw in raws:
-            if type(raw) is not element.NavigableString:
-                status_on_main_page = list(find_tag(raw, 'abbr').text)
-                next_link = urljoin(PEP_DOC_URL, find_tag(raw, 'a')['href'])
-                response = session.get(next_link)
-                soup = BeautifulSoup(response.text, 'lxml')
-                status = soup.find('abbr')
-                if len(status_on_main_page) > 1:
-                    if status.text not in EXPECTED_STATUS[
-                        status_on_main_page[1]
-                    ]:
-                        different_statuses.append((
-                            next_link,
-                            status.text,
-                            EXPECTED_STATUS[status_on_main_page[1]],
-                        ))
-                        continue
-                    counters[status_on_main_page[1]] += 1
-                else:
-                    if status.text not in EXPECTED_STATUS['']:
-                        different_statuses.append((
-                            next_link,
-                            status.text,
-                            EXPECTED_STATUS[''],
-                        ))
-                        continue
-                    counters[''] += 1
-    if len(different_statuses) > 0:
+
+    counters = defaultdict(lambda: 0)
+    for raw in tqdm(tables):
+        if not raw.abbr:
+            continue
+        status_on_main_page = list(find_tag(raw, 'abbr').text)
+        next_link = urljoin(PEP_DOC_URL, find_tag(raw, 'a')['href'])
+        response = session.get(next_link)
+        if response is None:
+            continue
+        soup = BeautifulSoup(response.text, 'lxml')
+        status = find_tag(soup, 'abbr')
+        if not is_in_expected_statuses(status.text, status_on_main_page):
+            different_statuses.append((
+                next_link,
+                status.text,
+                EXPECTED_STATUS[status_on_main_page[-1]],
+            ))
+            continue
+        counters[status.text] += 1
+    if different_statuses:
         msg = ['\n{0}\nВ карточке:{1}\nОжидал: {2}'.format(*info)
                for info in different_statuses]
         logging.info('Несовпадающие статусы:' + str(*msg))
-    counters['Total'] = sum([*counters.values()][1:])
+    counters['Total'] = sum([*counters.values()])
     return counters.items()
 
 

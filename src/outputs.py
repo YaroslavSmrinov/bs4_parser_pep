@@ -1,8 +1,10 @@
-from prettytable import PrettyTable
 import csv
 import datetime as dt
-from constants import BASE_DIR, DATETIME_FORMAT
 import logging
+
+from prettytable import PrettyTable
+
+from constants import BASE_DIR, DATETIME_FORMAT
 
 
 def control_output(results, cli_args):

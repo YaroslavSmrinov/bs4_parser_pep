@@ -1,6 +1,8 @@
 import logging
+
 from requests import RequestException
 
+from constants import EXPECTED_STATUS
 from exceptions import ParserFindTagException
 
 
@@ -23,3 +25,9 @@ def find_tag(soup, tag, attrs=None):
         logging.error(error_msg, stack_info=True)
         raise ParserFindTagException(error_msg)
     return searched_tag
+
+
+def is_in_expected_statuses(value, short_status):
+    if len(short_status) < 2:
+        return value in EXPECTED_STATUS['']
+    return value in EXPECTED_STATUS[f'{short_status[1]}']
